@@ -77,22 +77,23 @@ pipeline {
             when { expression { return fileExists('sonar-project.properties') } }
             steps {
                 script {
-                    def hasSonar = false
                     try {
                         withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-                            hasSonar = true
+                            // Run the Sonar Scanner CLI as a throwaway Docker container so
+                            // we don't need to install it inside the Jenkins controller.
+                            // host.docker.internal -> the SonarQube container running on the Mac host (port 9000).
                             sh '''
-                                if ! command -v sonar-scanner >/dev/null 2>&1; then
-                                    echo "sonar-scanner not on PATH - skipping (install Sonar Scanner CLI on agent)"
-                                    exit 0
-                                fi
-                                sonar-scanner \
-                                  -Dsonar.login=${SONAR_TOKEN} \
-                                  -Dsonar.host.url=${SONAR_HOST_URL:-http://host.docker.internal:9000}
+                                SONAR_HOST_URL_EFFECTIVE="${SONAR_HOST_URL:-http://host.docker.internal:9001}"
+                                docker run --rm \
+                                    -e SONAR_HOST_URL="${SONAR_HOST_URL_EFFECTIVE}" \
+                                    -e SONAR_TOKEN="${SONAR_TOKEN}" \
+                                    -v "${WORKSPACE}:/usr/src" \
+                                    sonarsource/sonar-scanner-cli:latest \
+                                    -Dsonar.login=${SONAR_TOKEN}
                             '''
                         }
                     } catch (err) {
-                        echo "SonarQube credentials not configured - skipping (${err.message})"
+                        echo "SonarQube stage skipped (${err.message})"
                     }
                 }
             }

@@ -1,0 +1,8 @@
+[run]
+# Use paths relative to the project root inside coverage.xml so SonarQube can resolve them
+# regardless of where the workspace is mounted (e.g. inside the sonar-scanner container).
+relative_files = True
+source = app
+
+[report]
+show_missing = True
