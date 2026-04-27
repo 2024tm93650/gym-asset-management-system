@@ -1,0 +1,32 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv
+.pytest_cache
+.coverage
+htmlcov
+coverage.xml
+
+# CI / IDE artifacts
+reports
+.scannerwork
+.vscode
+.idea
+.DS_Store
+
+# Tests & dev-only
+tests
+requirements-dev.txt
+pytest.ini
+
+# Docs
+README.md
+*.md
