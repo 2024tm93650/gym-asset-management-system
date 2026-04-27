@@ -1,0 +1,80 @@
+# =============================================================
+# Strategy 1 - ROLLING UPDATE (Kubernetes default)
+# =============================================================
+# - Single Deployment, single Service.
+# - maxSurge=1 / maxUnavailable=0  -> zero-downtime gradual replace.
+# - Use:
+#     kubectl apply -f k8s/00-namespace.yaml
+#     kubectl apply -f k8s/01-rolling-update/
+#     kubectl -n aceest set image deployment/aceest-fitness aceest-fitness=2024tm93650/aceest-fitness:<new>
+#     kubectl -n aceest rollout status deployment/aceest-fitness
+# - Rollback:  kubectl -n aceest rollout undo deployment/aceest-fitness
+# =============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-fitness
+  namespace: aceest
+  labels:
+    app: aceest-fitness
+    strategy: rolling
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: aceest-fitness
+  template:
+    metadata:
+      labels:
+        app: aceest-fitness
+        strategy: rolling
+    spec:
+      containers:
+        - name: aceest-fitness
+          image: 2024tm93650/aceest-fitness:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "192Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-fitness
+  namespace: aceest
+  labels:
+    app: aceest-fitness
+spec:
+  type: NodePort
+  selector:
+    app: aceest-fitness        # all pods of the deployment
+  ports:
+    - port: 80
+      targetPort: 5000
+      nodePort: 30080
+      name: http

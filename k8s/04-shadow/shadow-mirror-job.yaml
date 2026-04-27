@@ -1,0 +1,35 @@
+# Companion Job: mirrors every production hit to the shadow service.
+# Run once you've applied 04-shadow/deployment.yaml:
+#   kubectl apply -f k8s/04-shadow/shadow-mirror-job.yaml
+# Watch:
+#   kubectl -n aceest logs -f job/aceest-shadow-mirror
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: aceest-shadow-mirror
+  namespace: aceest
+  labels: { strategy: shadow, role: traffic-mirror }
+spec:
+  ttlSecondsAfterFinished: 60
+  template:
+    metadata:
+      labels: { strategy: shadow, role: traffic-mirror }
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: mirror
+          image: curlimages/curl:8.10.1
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "[$(date)] starting traffic mirror -> shadow";
+              for i in $(seq 1 60); do
+                # Real traffic to production
+                curl -s "http://aceest-prod-svc/calories?weight=$((50 + RANDOM % 60))&program=MG" \
+                  -o /dev/null -w "prod=%{http_code} ";
+                # Mirrored copy to shadow (response is discarded)
+                curl -s "http://aceest-shadow-svc/calories?weight=$((50 + RANDOM % 60))&program=MG" \
+                  -o /dev/null -w "shadow=%{http_code}\n";
+                sleep 2;
+              done;
+              echo "[$(date)] mirror complete";

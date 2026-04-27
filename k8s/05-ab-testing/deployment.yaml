@@ -1,0 +1,117 @@
+# =============================================================
+# Strategy 5 - A / B TESTING (header-based routing via Ingress)
+# =============================================================
+# - Two distinct versions (A = control, B = experiment).
+# - Two Services -- one per version.
+# - One Ingress with two rules:
+#     * canary annotation `nginx.ingress.kubernetes.io/canary-by-header: X-Variant`
+#       -> requests with `X-Variant: B` go to version B.
+#     * Every other request goes to version A.
+# - Requires: minikube addons enable ingress
+# - Test:
+#     curl -H "Host: aceest.local" http://$(minikube ip)/version            # -> A
+#     curl -H "Host: aceest.local" -H "X-Variant: B" http://$(minikube ip)/version   # -> B
+# =============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-ab-a
+  namespace: aceest
+  labels: { app: aceest-ab, variant: a, strategy: ab }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: aceest-ab, variant: a }
+  template:
+    metadata:
+      labels: { app: aceest-ab, variant: a, strategy: ab }
+    spec:
+      containers:
+        - name: aceest-fitness
+          image: 2024tm93650/aceest-fitness:latest    # control = current prod
+          imagePullPolicy: IfNotPresent
+          ports: [ { containerPort: 5000 } ]
+          env:
+            - { name: ACEEST_VARIANT, value: "A" }
+          readinessProbe: { httpGet: { path: /health, port: 5000 }, periodSeconds: 5 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-ab-b
+  namespace: aceest
+  labels: { app: aceest-ab, variant: b, strategy: ab }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: aceest-ab, variant: b }
+  template:
+    metadata:
+      labels: { app: aceest-ab, variant: b, strategy: ab }
+    spec:
+      containers:
+        - name: aceest-fitness
+          image: 2024tm93650/aceest-fitness:latest    # experiment build
+          imagePullPolicy: IfNotPresent
+          ports: [ { containerPort: 5000 } ]
+          env:
+            - { name: ACEEST_VARIANT, value: "B" }
+          readinessProbe: { httpGet: { path: /health, port: 5000 }, periodSeconds: 5 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: aceest-ab-a-svc, namespace: aceest }
+spec:
+  selector: { app: aceest-ab, variant: a }
+  ports: [ { port: 80, targetPort: 5000 } ]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: aceest-ab-b-svc, namespace: aceest }
+spec:
+  selector: { app: aceest-ab, variant: b }
+  ports: [ { port: 80, targetPort: 5000 } ]
+---
+# Default rule -> variant A (control).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-ab-main
+  namespace: aceest
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: aceest.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aceest-ab-a-svc
+                port: { number: 80 }
+---
+# Canary rule -> variant B when header X-Variant: B is present.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-ab-experiment
+  namespace: aceest
+  annotations:
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-by-header: "X-Variant"
+    nginx.ingress.kubernetes.io/canary-by-header-value: "B"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: aceest.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: aceest-ab-b-svc
+                port: { number: 80 }
