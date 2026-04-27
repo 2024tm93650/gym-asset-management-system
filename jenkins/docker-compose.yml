@@ -1,0 +1,27 @@
+# Spin up Jenkins locally (with Docker-in-Docker socket mounted so the
+# pipeline can run `docker build/push` inside the controller).
+#
+# Usage:
+#   docker compose -f jenkins/docker-compose.yml up -d
+#   open http://localhost:8080
+#   # initial admin password:
+#   docker exec aceest-jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+#
+# Tear down:
+#   docker compose -f jenkins/docker-compose.yml down
+
+services:
+  jenkins:
+    image: jenkins/jenkins:lts-jdk17
+    container_name: aceest-jenkins
+    user: root            # required so the container can install python and access /var/run/docker.sock
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+volumes:
+  jenkins_home:
